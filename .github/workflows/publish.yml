@@ -1,0 +1,33 @@
+# Every push to main packs each sample of catalogue.json into <name>.zip and puts the zips and index.json
+# on the `samples` release — the only place the Kepes app downloads samples from (samples.rs).
+name: publish
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: publish
+  cancel-in-progress: true
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .github/pack.mjs
+      - name: upload to the samples release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view samples >/dev/null 2>&1 || gh release create samples --title "Samples" --notes "Sample workspaces for Kepes, packed by the publish workflow. Open them from Kepes: workspace menu ▸ Open a sample…"
+          gh release upload samples dist/* --clobber
+          # a sample taken out of the catalogue leaves the release too
+          for a in $(gh release view samples --json assets -q '.assets[].name'); do
+            [ -f "dist/$a" ] || gh release delete-asset samples "$a" -y
+          done
